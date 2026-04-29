@@ -1,5 +1,7 @@
 # resilient-read
 
+[![PyPI version](https://img.shields.io/pypi/v/resilient-read)](https://pypi.org/project/resilient-read/)
+
 MCP server that lets coding agents read very large files safely in **small, resumable chunks**.
 
 ## Why this exists
@@ -22,7 +24,7 @@ When context windows are small, naive full-file reads are brittle and expensive.
 uv sync
 ```
 
-PyPI release (`0.1.0`): [https://pypi.org/project/resilient-read/0.1.0/](https://pypi.org/project/resilient-read/0.1.0/)
+PyPI (latest): [https://pypi.org/project/resilient-read/](https://pypi.org/project/resilient-read/)
 
 Install from PyPI:
 
