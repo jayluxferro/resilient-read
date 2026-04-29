@@ -1,6 +1,6 @@
 [project]
 name = "resilient-read"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for resilient chunked reads of large files"
 readme = "README.md"
 requires-python = ">=3.12"

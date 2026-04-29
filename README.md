@@ -22,10 +22,30 @@ When context windows are small, naive full-file reads are brittle and expensive.
 uv sync
 ```
 
+PyPI release (`0.1.0`): [https://pypi.org/project/resilient-read/0.1.0/](https://pypi.org/project/resilient-read/0.1.0/)
+
+Install from PyPI:
+
+```bash
+pip install resilient-read
+```
+
 Run with stdio (default):
 
 ```bash
 uv run resilient-read
+```
+
+Run with SSE:
+
+```bash
+uv run resilient-read --transport sse --host 127.0.0.1 --port 8000
+```
+
+Run with Streamable HTTP:
+
+```bash
+uv run resilient-read --transport http --host 127.0.0.1 --port 8000
 ```
 
 ## MCP config (stdio)
@@ -39,6 +59,32 @@ uv run resilient-read
       "env": {
         "RR_WORKSPACE": "/path/to/your/project"
       }
+    }
+  }
+}
+```
+
+## MCP config (SSE)
+
+```json
+{
+  "mcpServers": {
+    "resilient-read": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8000/sse"
+    }
+  }
+}
+```
+
+## MCP config (HTTP)
+
+```json
+{
+  "mcpServers": {
+    "resilient-read": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
     }
   }
 }
