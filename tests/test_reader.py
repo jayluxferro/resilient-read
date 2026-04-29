@@ -64,3 +64,8 @@ def test_search_then_page(tmp_path: Path) -> None:
     assert out["matches_returned"] == 1
     assert out["next_from_line"] == 4
     assert out["matches"][0]["match_line"] == 3
+    assert out["has_more"] is True
+
+    out2 = search_then_page(tmp_path, "mix.txt", query="needle", from_line=6, max_matches=1)
+    assert out2["matches_returned"] == 0
+    assert out2["has_more"] is False

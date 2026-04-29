@@ -251,6 +251,14 @@ def search_then_page(
 
     st = full.stat()
     next_from_line = hits[-1]["match_line"] + 1 if hits else from_line
+    search_start_idx = max(0, next_from_line - 1)
+    has_more = False
+    for idx in range(search_start_idx, total):
+        line = lines[idx].rstrip("\n")
+        hay_line = line if case_sensitive else line.lower()
+        if hay_query in hay_line:
+            has_more = True
+            break
     return {
         "ok": True,
         "path": path,
@@ -258,7 +266,7 @@ def search_then_page(
         "from_line": from_line,
         "next_from_line": next_from_line,
         "matches_returned": len(hits),
-        "has_more": next_from_line <= total,
+        "has_more": has_more,
         "mtime_ns": st.st_mtime_ns,
         "matches": hits,
     }
