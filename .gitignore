@@ -4,3 +4,4 @@ __pycache__/
 .resilient_write/
 *.pyc
 tmp/
+git-push
