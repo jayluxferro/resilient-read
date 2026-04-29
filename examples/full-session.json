@@ -1,0 +1,85 @@
+{
+  "description": "End-to-end cursor pagination flow",
+  "steps": [
+    {
+      "name": "create_cursor",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 100,
+        "method": "tools/call",
+        "params": {
+          "name": "rr.make_cursor",
+          "arguments": {
+            "path": "logs/app.log",
+            "offset": 0,
+            "max_bytes": 32768
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 100,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"cursor\":\"eyJwYXRoIjoibG9ncy9hcHAubG9nIiwib2Zmc2V0IjowLCJtYXhfYnl0ZXMiOjMyNzY4LCJzaXplIjo4MTIzNDUsIm10aW1lX25zIjoxNzE0Mzk3NzAwMDAwMDAwMDAwfQ==\",\"max_bytes\":32768,\"mtime_ns\":1714397700000000000,\"offset\":0,\"ok\":true,\"path\":\"logs/app.log\",\"size\":812345}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "read_next_chunk_1",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 101,
+        "method": "tools/call",
+        "params": {
+          "name": "rr.read_next",
+          "arguments": {
+            "cursor": "eyJwYXRoIjoibG9ncy9hcHAubG9nIiwib2Zmc2V0IjowLCJtYXhfYnl0ZXMiOjMyNzY4LCJzaXplIjo4MTIzNDUsIm10aW1lX25zIjoxNzE0Mzk3NzAwMDAwMDAwMDAwfQ=="
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 101,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"bytes_read\":32768,\"content\":\"INFO ... first window ...\",\"cursor\":\"eyJwYXRoIjoibG9ncy9hcHAubG9nIiwib2Zmc2V0IjozMjc2OCwibWF4X2J5dGVzIjozMjc2OCwic2l6ZSI6ODEyMzQ1LCJtdGltZV9ucyI6MTcxNDM5NzcwMDAwMDAwMDAwMH0=\",\"encoding\":\"utf-8\",\"eof\":false,\"mtime_ns\":1714397700000000000,\"next_offset\":32768,\"offset\":0,\"ok\":true,\"path\":\"logs/app.log\",\"size\":812345}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "read_next_chunk_2",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 102,
+        "method": "tools/call",
+        "params": {
+          "name": "rr.read_next",
+          "arguments": {
+            "cursor": "eyJwYXRoIjoibG9ncy9hcHAubG9nIiwib2Zmc2V0IjozMjc2OCwibWF4X2J5dGVzIjozMjc2OCwic2l6ZSI6ODEyMzQ1LCJtdGltZV9ucyI6MTcxNDM5NzcwMDAwMDAwMDAwMH0="
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 102,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"bytes_read\":32768,\"content\":\"INFO ... second window ...\",\"cursor\":\"eyJwYXRoIjoibG9ncy9hcHAubG9nIiwib2Zmc2V0Ijo2NTUzNiwibWF4X2J5dGVzIjozMjc2OCwic2l6ZSI6ODEyMzQ1LCJtdGltZV9ucyI6MTcxNDM5NzcwMDAwMDAwMDAwMH0=\",\"encoding\":\"utf-8\",\"eof\":false,\"mtime_ns\":1714397700000000000,\"next_offset\":65536,\"offset\":32768,\"ok\":true,\"path\":\"logs/app.log\",\"size\":812345}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

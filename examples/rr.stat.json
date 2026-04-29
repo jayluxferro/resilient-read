@@ -1,0 +1,26 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "rr.stat",
+      "arguments": {
+        "path": "logs/app.log",
+        "include_sha256": false
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"mtime_ns\":1714397700000000000,\"ok\":true,\"path\":\"logs/app.log\",\"size\":812345}"
+        }
+      ]
+    }
+  }
+}

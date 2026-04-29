@@ -1,0 +1,31 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "rr.search_then_page",
+      "arguments": {
+        "path": "logs/app.log",
+        "query": "timeout",
+        "from_line": 1,
+        "context_before": 2,
+        "context_after": 4,
+        "max_matches": 2,
+        "case_sensitive": false
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"from_line\":1,\"has_more\":true,\"matches\":[{\"end_line\":408,\"excerpt\":\"402|...\\n403|timeout while...\",\"match_line\":404,\"start_line\":402}],\"matches_returned\":1,\"mtime_ns\":1714397700000000000,\"next_from_line\":405,\"ok\":true,\"path\":\"logs/app.log\",\"query\":\"timeout\"}"
+        }
+      ]
+    }
+  }
+}

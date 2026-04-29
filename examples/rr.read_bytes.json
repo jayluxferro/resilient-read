@@ -1,0 +1,29 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "rr.read_bytes",
+      "arguments": {
+        "path": "logs/app.log",
+        "offset": 0,
+        "max_bytes": 256,
+        "encoding": "utf-8",
+        "errors": "replace"
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"bytes_read\":256,\"content\":\"INFO startup...\",\"encoding\":\"utf-8\",\"eof\":false,\"mtime_ns\":1714397700000000000,\"next_offset\":256,\"offset\":0,\"ok\":true,\"path\":\"logs/app.log\",\"size\":812345}"
+        }
+      ]
+    }
+  }
+}

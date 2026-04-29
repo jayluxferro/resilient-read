@@ -1,0 +1,26 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "rr.read_tail",
+      "arguments": {
+        "path": "logs/app.log",
+        "max_lines": 50
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"content\":\"9951|...\\n9952|...\",\"end_line\":10000,\"eof\":true,\"lines_returned\":50,\"mtime_ns\":1714397700000000000,\"ok\":true,\"path\":\"logs/app.log\",\"start_line\":9951,\"total_lines\":10000}"
+        }
+      ]
+    }
+  }
+}

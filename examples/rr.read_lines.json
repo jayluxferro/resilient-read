@@ -1,0 +1,27 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "rr.read_lines",
+      "arguments": {
+        "path": "src/main.py",
+        "start_line": 120,
+        "max_lines": 20
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"content\":\"120|def run():\\n121|    ...\",\"end_line\":139,\"eof\":false,\"lines_returned\":20,\"mtime_ns\":1714397700000000000,\"ok\":true,\"path\":\"src/main.py\",\"start_line\":120}"
+        }
+      ]
+    }
+  }
+}

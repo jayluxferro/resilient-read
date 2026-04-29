@@ -1,0 +1,27 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "rr.make_cursor",
+      "arguments": {
+        "path": "logs/app.log",
+        "offset": 0,
+        "max_bytes": 65536
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"cursor\":\"eyJwYXRoIjoibG9ncy9hcHAubG9nIiwib2Zmc2V0IjowLCJtYXhfYnl0ZXMiOjY1NTM2LCJzaXplIjo4MTIzNDUsIm10aW1lX25zIjoxNzE0Mzk3NzAwMDAwMDAwMDAwfQ==\",\"max_bytes\":65536,\"mtime_ns\":1714397700000000000,\"offset\":0,\"ok\":true,\"path\":\"logs/app.log\",\"size\":812345}"
+        }
+      ]
+    }
+  }
+}
