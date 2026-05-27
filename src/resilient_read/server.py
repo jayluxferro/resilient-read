@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
 from mcp.server import Server
@@ -19,7 +20,8 @@ from .reader import (
     read_next,
     read_tail,
     search_then_page,
-    workspace_root,
+    state_root,
+    workspace_roots,
 )
 
 SERVER_NAME = "resilient-read"
@@ -173,16 +175,16 @@ _SERVER_INSTRUCTIONS = (
 
 
 def _dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    workspace = workspace_root()
+    workspaces = workspace_roots()
     if name == "rr.stat":
         return file_stat(
-            workspace,
+            workspaces,
             arguments["path"],
             include_sha256=bool(arguments.get("include_sha256", False)),
         )
     if name == "rr.read_bytes":
         return read_bytes(
-            workspace,
+            workspaces,
             arguments["path"],
             offset=int(arguments.get("offset", 0)),
             max_bytes=arguments.get("max_bytes"),
@@ -191,20 +193,20 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         )
     if name == "rr.read_lines":
         return read_lines(
-            workspace,
+            workspaces,
             arguments["path"],
             start_line=int(arguments.get("start_line", 1)),
             max_lines=arguments.get("max_lines"),
         )
     if name == "rr.read_tail":
         return read_tail(
-            workspace,
+            workspaces,
             arguments["path"],
             max_lines=int(arguments.get("max_lines", 200)),
         )
     if name == "rr.search_then_page":
         return search_then_page(
-            workspace,
+            workspaces,
             arguments["path"],
             query=arguments["query"],
             from_line=int(arguments.get("from_line", 1)),
@@ -215,14 +217,14 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         )
     if name == "rr.make_cursor":
         return make_cursor(
-            workspace,
+            workspaces,
             arguments["path"],
             offset=int(arguments.get("offset", 0)),
             max_bytes=arguments.get("max_bytes"),
         )
     if name == "rr.read_next":
         return read_next(
-            workspace,
+            workspaces,
             arguments["cursor"],
             max_bytes=arguments.get("max_bytes"),
         )
@@ -320,7 +322,27 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host for sse/http transports")
     parser.add_argument("--port", type=int, default=8000, help="Bind port for sse/http transports")
+    parser.add_argument(
+        "-w", "--workspace",
+        action="append",
+        default=None,
+        dest="workspaces",
+        help="Add a workspace directory (repeatable). Prepends to $RR_WORKSPACE.",
+    )
     args = parser.parse_args()
+
+    if args.workspaces:
+        existing = os.environ.get("RR_WORKSPACE", "")
+        if existing and existing.strip().startswith("["):
+            try:
+                existing_roots = json.loads(existing)
+            except json.JSONDecodeError:
+                existing_roots = [existing]
+        elif existing:
+            existing_roots = [existing]
+        else:
+            existing_roots = []
+        os.environ["RR_WORKSPACE"] = json.dumps(args.workspaces + existing_roots)
 
     if args.transport == "stdio":
         asyncio.run(_run_stdio())

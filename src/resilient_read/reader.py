@@ -1,4 +1,16 @@
-"""Chunked and resumable reads for large files."""
+"""Chunked and resumable reads for large files.
+
+Two independent roots:
+
+- **state root** — where state lives (future-proofing; defaults to ``$PWD``,
+  overridable via ``$RR_STATE_DIR``).
+- **workspace roots** — default bases for relative paths (defaults to ``$PWD``,
+  overridable via ``$RR_WORKSPACE``, a ``os.pathsep``-separated list).
+
+Reads are allowed anywhere on the filesystem. Relative paths are resolved
+against each workspace root in order (first match wins); absolute paths
+are accepted as-is.
+"""
 
 from __future__ import annotations
 
@@ -18,37 +30,95 @@ _MAX_LINES_HARD_LIMIT = 5000
 _UNSAFE_ROOTS = frozenset({"/", "/bin", "/sbin", "/usr", "/etc", "/var", "/tmp"})
 
 
-def workspace_root() -> Path:
-    override = os.environ.get("RR_WORKSPACE")
-    root = Path(override).resolve() if override else Path.cwd().resolve()
+def _resolve_roots(env_var: str) -> list[Path]:
+    """Return workspace roots from env var.
+
+    Accepts two formats:
+      - A plain path string (e.g. ``"/Users/jay"``) — backward compatible.
+      - A JSON array of paths (e.g. ``["/Users/jay", "/Volumes/Lux/dev/"]``).
+    """
+    override = os.environ.get(env_var)
+    if override:
+        stripped = override.strip()
+        if stripped.startswith("["):
+            try:
+                raw = json.loads(stripped)
+                if isinstance(raw, list):
+                    roots = [Path(p).resolve() for p in raw if p]
+                else:
+                    roots = [Path(stripped).resolve()]
+            except json.JSONDecodeError:
+                roots = [Path(stripped).resolve()]
+        else:
+            roots = [Path(stripped).resolve()]
+    else:
+        roots = [Path.cwd().resolve()]
+    for root in roots:
+        if str(root) in _UNSAFE_ROOTS:
+            raise SystemExit(
+                f"resilient-read: refusing to use '{root}' as {env_var}. "
+                "Set the variable to your project directory."
+            )
+    return roots or [Path.cwd().resolve()]
+
+
+def _resolve_root_single(env_var: str) -> Path:
+    """Return a single root from env var (first value if multi)."""
+    return _resolve_roots(env_var)[0]
+
+
+def state_root() -> Path:
+    """Return the directory where future resilient-read state will live.
+
+    Uses ``$RR_STATE_DIR`` if set, otherwise first ``$RR_WORKSPACE`` if set,
+    otherwise ``$PWD``.
+    """
+    if os.environ.get("RR_STATE_DIR"):
+        return _resolve_root_single("RR_STATE_DIR")
+    if os.environ.get("RR_WORKSPACE"):
+        return _resolve_root_single("RR_WORKSPACE")
+    root = Path.cwd().resolve()
     if str(root) in _UNSAFE_ROOTS:
         raise SystemExit(
-            f"resilient-read: refusing to use '{root}' as workspace root. "
-            "Set $RR_WORKSPACE to your project directory."
+            f"resilient-read: refusing to use '{root}' as state root. "
+            "Set $RR_STATE_DIR to your project directory."
         )
     return root
 
 
-def _resolve_path(workspace: Path, rel_path: str) -> Path:
-    p = (workspace / rel_path).resolve()
-    try:
-        p.relative_to(workspace)
-    except ValueError as exc:
-        raise ResilientReadError(
-            "policy_violation",
-            "path_escape",
-            "Path resolves outside workspace",
-            {"path": rel_path},
-        ) from exc
-    if not p.exists():
+def workspace_roots() -> list[Path]:
+    """Return the default bases for relative read paths.
+
+    Uses ``$RR_WORKSPACE`` if set, otherwise ``$PWD``.
+    """
+    return _resolve_roots("RR_WORKSPACE")
+
+
+def _resolve_path(workspaces: list[Path], rel_path: str) -> Path:
+    """Resolve a user-supplied path. Relative paths are tried against each
+    workspace in order (first match wins); absolute paths are accepted
+    as-is. The file must exist and be a regular file."""
+    p = Path(rel_path)
+    if p.is_absolute():
+        full = p.resolve()
+    else:
+        full = None
+        for ws in workspaces:
+            candidate = (ws / rel_path).resolve()
+            if candidate.exists():
+                full = candidate
+                break
+        if full is None:
+            full = (workspaces[0] / rel_path).resolve()
+    if not full.exists():
         raise ResilientReadError("not_found", "missing", "File not found", {"path": rel_path})
-    if not p.is_file():
+    if not full.is_file():
         raise ResilientReadError("invalid_input", "not_file", "Path is not a file", {"path": rel_path})
-    return p
+    return full
 
 
-def file_stat(workspace: Path, path: str, include_sha256: bool = False) -> dict[str, Any]:
-    full = _resolve_path(workspace, path)
+def file_stat(workspaces: list[Path], path: str, include_sha256: bool = False) -> dict[str, Any]:
+    full = _resolve_path(workspaces, path)
     st = full.stat()
     data: dict[str, Any] = {
         "ok": True,
@@ -90,7 +160,7 @@ def _normalize_max_lines(max_lines: int | None) -> int:
 
 
 def read_bytes(
-    workspace: Path,
+    workspaces: list[Path],
     path: str,
     *,
     offset: int = 0,
@@ -98,7 +168,7 @@ def read_bytes(
     encoding: str = "utf-8",
     errors: str = "replace",
 ) -> dict[str, Any]:
-    full = _resolve_path(workspace, path)
+    full = _resolve_path(workspaces, path)
     if offset < 0:
         raise ResilientReadError("invalid_input", "range", "offset must be >= 0")
     budget = _normalize_max_bytes(max_bytes)
@@ -133,13 +203,13 @@ def read_bytes(
 
 
 def read_lines(
-    workspace: Path,
+    workspaces: list[Path],
     path: str,
     *,
     start_line: int = 1,
     max_lines: int | None = None,
 ) -> dict[str, Any]:
-    full = _resolve_path(workspace, path)
+    full = _resolve_path(workspaces, path)
     if start_line < 1:
         raise ResilientReadError("invalid_input", "range", "start_line must be >= 1")
 
@@ -171,12 +241,12 @@ def read_lines(
 
 
 def read_tail(
-    workspace: Path,
+    workspaces: list[Path],
     path: str,
     *,
     max_lines: int = 200,
 ) -> dict[str, Any]:
-    full = _resolve_path(workspace, path)
+    full = _resolve_path(workspaces, path)
     cap = _normalize_max_lines(max_lines)
 
     with full.open("r", encoding="utf-8", errors="replace") as f:
@@ -202,7 +272,7 @@ def read_tail(
 
 
 def search_then_page(
-    workspace: Path,
+    workspaces: list[Path],
     path: str,
     *,
     query: str,
@@ -221,7 +291,7 @@ def search_then_page(
     if max_matches < 1 or max_matches > 100:
         raise ResilientReadError("invalid_input", "range", "max_matches must be between 1 and 100")
 
-    full = _resolve_path(workspace, path)
+    full = _resolve_path(workspaces, path)
     with full.open("r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
 
@@ -272,8 +342,8 @@ def search_then_page(
     }
 
 
-def make_cursor(workspace: Path, path: str, *, offset: int = 0, max_bytes: int | None = None) -> dict[str, Any]:
-    full = _resolve_path(workspace, path)
+def make_cursor(workspaces: list[Path], path: str, *, offset: int = 0, max_bytes: int | None = None) -> dict[str, Any]:
+    full = _resolve_path(workspaces, path)
     st = full.stat()
     if offset < 0 or offset > st.st_size:
         raise ResilientReadError("invalid_input", "range", "offset out of file bounds")
@@ -289,7 +359,7 @@ def make_cursor(workspace: Path, path: str, *, offset: int = 0, max_bytes: int |
     return {"ok": True, "cursor": token, **cursor_payload}
 
 
-def read_next(workspace: Path, cursor: str, *, max_bytes: int | None = None) -> dict[str, Any]:
+def read_next(workspaces: list[Path], cursor: str, *, max_bytes: int | None = None) -> dict[str, Any]:
     try:
         decoded = base64.urlsafe_b64decode(cursor.encode("ascii"))
         state = json.loads(decoded.decode("utf-8"))
@@ -302,7 +372,7 @@ def read_next(workspace: Path, cursor: str, *, max_bytes: int | None = None) -> 
     offset = int(state["offset"])
     budget = _normalize_max_bytes(max_bytes if max_bytes is not None else int(state["max_bytes"]))
 
-    full = _resolve_path(workspace, path)
+    full = _resolve_path(workspaces, path)
     st = full.stat()
     if st.st_size != expected_size or st.st_mtime_ns != expected_mtime:
         raise ResilientReadError(
@@ -318,9 +388,9 @@ def read_next(workspace: Path, cursor: str, *, max_bytes: int | None = None) -> 
             },
         )
 
-    result = read_bytes(workspace, path, offset=offset, max_bytes=budget)
+    result = read_bytes(workspaces, path, offset=offset, max_bytes=budget)
     next_cursor = make_cursor(
-        workspace,
+        workspaces,
         path,
         offset=int(result["next_offset"]),
         max_bytes=budget,

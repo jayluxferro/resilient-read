@@ -50,6 +50,37 @@ Run with Streamable HTTP:
 uv run resilient-read --transport http --host 127.0.0.1 --port 8000
 ```
 
+## State root vs workspace roots
+
+Two independent concepts, both defaulting to `$PWD`:
+
+| Env var | Purpose | Default |
+|---|---|---|
+| `RR_STATE_DIR` | Where future resilient-read state lives | first `$RR_WORKSPACE` → `$PWD` |
+| `RR_WORKSPACE` | Base directories for relative read paths | `$PWD` |
+
+`RR_WORKSPACE` accepts two formats:
+
+- **Plain string** (backward compatible): `"/Users/jay/my-project"`
+- **JSON array** (multi-workspace): `["/Users/jay/proj-a", "/Volumes/Lux/dev/proj-b"]`
+
+When multiple workspaces are configured, relative paths are tried against each
+workspace in order — first match wins. Absolute paths are accepted as-is from
+anywhere on the filesystem. The first workspace is used as the fallback for
+`RR_STATE_DIR`.
+
+### CLI
+
+```bash
+# Single workspace
+resilient-read -w /Users/jay/proj-a
+
+# Multiple workspaces (repeatable)
+resilient-read -w /Users/jay/proj-a -w /Volumes/Lux/dev/proj-b
+```
+
+CLI args prepend to `$RR_WORKSPACE`.
+
 ## MCP config (stdio)
 
 ```json
@@ -59,12 +90,17 @@ uv run resilient-read --transport http --host 127.0.0.1 --port 8000
       "command": "uvx",
       "args": ["resilient-read"],
       "env": {
-        "RR_WORKSPACE": "/path/to/your/project"
+        "RR_STATE_DIR": "/path/to/your/project",
+        "RR_WORKSPACE": "[\"/Users/jay/proj-a\", \"/Volumes/Lux/dev/proj-b\"]"
       }
     }
   }
 }
 ```
+
+`RR_STATE_DIR` is optional — it falls back to `RR_WORKSPACE`, which falls back
+to `$PWD`. resilient-read is currently stateless; `RR_STATE_DIR` exists for
+forward compatibility.
 
 ## MCP config (SSE)
 
