@@ -50,24 +50,35 @@ Run with Streamable HTTP:
 uv run resilient-read --transport http --host 127.0.0.1 --port 8000
 ```
 
-## State root vs workspace roots
+## Path resolution: CWD, workspaces, state
 
-Two independent concepts, both defaulting to `$PWD`:
+Three independent concepts:
 
-| Env var | Purpose | Default |
+| Env var / source | Purpose | Default |
 |---|---|---|
-| `RR_STATE_DIR` | Where future resilient-read state lives | first `$RR_WORKSPACE` → `$PWD` |
-| `RR_WORKSPACE` | Base directories for relative read paths | `$PWD` |
+| **CWD** (process working directory) | The default anchor for relative paths supplied by the agent | inherited from the launcher |
+| `RR_WORKSPACE` | The *access boundary* — paths must resolve inside one of these roots | CWD |
+| `RR_STATE_DIR` | Where future resilient-read state will live | CWD |
 
-`RR_WORKSPACE` accepts two formats:
+### Resolution rules
 
-- **Plain string** (backward compatible): `"/Users/jay/my-project"`
-- **JSON array** (multi-workspace): `["/Users/jay/proj-a", "/Volumes/Lux/dev/proj-b"]`
+- **Relative paths** anchor at **CWD** first. If the file isn't there, each
+  workspace root is tried in order (first match wins). The fallback for "not
+  found" is the CWD-relative candidate so error messages are consistent.
+- **Absolute paths** are accepted only if they fall inside *some* workspace
+  root. Reads outside all configured workspaces are denied with
+  `permission_denied`.
+- **CWD is auto-added** to the workspace list if it isn't already inside one of
+  the configured roots, so a plain relative path is always within the access
+  boundary.
+- **State is decoupled** from workspaces. Set `RR_STATE_DIR` to put state
+  somewhere specific; otherwise it lives in CWD.
 
-When multiple workspaces are configured, relative paths are tried against each
-workspace in order — first match wins. Absolute paths are accepted as-is from
-anywhere on the filesystem. The first workspace is used as the fallback for
-`RR_STATE_DIR`.
+`RR_WORKSPACE` accepts:
+
+- **Plain string**: `"/Users/jay/my-project"`
+- **`os.pathsep` list**: `"/Users/jay/a:/Volumes/Lux/dev/b"`
+- **JSON array**: `["/Users/jay/a", "/Volumes/Lux/dev/b"]`
 
 ### CLI
 
@@ -90,7 +101,6 @@ CLI args prepend to `$RR_WORKSPACE`.
       "command": "uvx",
       "args": ["resilient-read"],
       "env": {
-        "RR_STATE_DIR": "/path/to/your/project",
         "RR_WORKSPACE": "[\"/Users/jay/proj-a\", \"/Volumes/Lux/dev/proj-b\"]"
       }
     }
@@ -98,9 +108,27 @@ CLI args prepend to `$RR_WORKSPACE`.
 }
 ```
 
-`RR_STATE_DIR` is optional — it falls back to `RR_WORKSPACE`, which falls back
-to `$PWD`. resilient-read is currently stateless; `RR_STATE_DIR` exists for
-forward compatibility.
+### Running from a checkout: use `--project`, not `--directory`
+
+When launching from a local source checkout via `uv run`, use **`--project`**, not `--directory`:
+
+```json
+{
+  "command": "uv",
+  "args": ["run", "--project", "/path/to/resilient-read-src", "resilient-read"],
+  "env": { "RR_WORKSPACE": "[\"/Users/jay\"]" }
+}
+```
+
+`uv run --directory X` **chdir's** to X before running, which pins the server's
+CWD to its own source tree — relative paths from the agent then resolve there
+rather than in the agent's project. `--project X` locates the package without
+changing CWD, so the server inherits the launcher's CWD (your active project).
+For any MCP server that resolves user-supplied relative paths, prefer
+`--project`.
+
+`RR_STATE_DIR` is optional — when unset, state lives in CWD. resilient-read is
+currently stateless; `RR_STATE_DIR` exists for forward compatibility.
 
 ## MCP config (SSE)
 

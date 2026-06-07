@@ -1,15 +1,18 @@
 """Chunked and resumable reads for large files.
 
-Two independent roots:
+Two independent concerns:
 
-- **state root** — where state lives (future-proofing; defaults to ``$PWD``,
-  overridable via ``$RR_STATE_DIR``).
-- **workspace roots** — default bases for relative paths (defaults to ``$PWD``,
-  overridable via ``$RR_WORKSPACE``, a ``os.pathsep``-separated list).
+- **state root** — where state lives (future-proofing; ``$RR_STATE_DIR`` if
+  set, otherwise the current working directory).
+- **workspace roots** — the *access boundary* for user-supplied paths.
+  Parsed from ``$RR_WORKSPACE`` (a single path, an ``os.pathsep``-separated
+  list, or a JSON array). The current working directory is auto-added if
+  not already inside one of the configured roots — so the agent's CWD is
+  always inside its own access boundary.
 
-Reads are allowed anywhere on the filesystem. Relative paths are resolved
-against each workspace root in order (first match wins); absolute paths
-are accepted as-is.
+Relative paths anchor at the CWD by default. Absolute paths are accepted
+if they fall inside any workspace root. Reads outside all workspace roots
+are denied.
 """
 
 from __future__ import annotations
@@ -30,53 +33,54 @@ _MAX_LINES_HARD_LIMIT = 5000
 _UNSAFE_ROOTS = frozenset({"/", "/bin", "/sbin", "/usr", "/etc", "/var", "/tmp"})
 
 
-def _resolve_roots(env_var: str) -> list[Path]:
-    """Return workspace roots from env var.
+def _parse_root_list(raw: str) -> list[Path]:
+    """Parse env-var content. Accepts JSON array, ``os.pathsep`` list, or plain path."""
+    stripped = raw.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list):
+                return [Path(p).resolve() for p in parsed if p]
+        except json.JSONDecodeError:
+            pass
+    if os.pathsep in stripped:
+        return [Path(p).resolve() for p in stripped.split(os.pathsep) if p]
+    return [Path(stripped).resolve()]
 
-    Accepts two formats:
-      - A plain path string (e.g. ``"/Users/jay"``) — backward compatible.
-      - A JSON array of paths (e.g. ``["/Users/jay", "/Volumes/Lux/dev/"]``).
-    """
-    override = os.environ.get(env_var)
-    if override:
-        stripped = override.strip()
-        if stripped.startswith("["):
-            try:
-                raw = json.loads(stripped)
-                if isinstance(raw, list):
-                    roots = [Path(p).resolve() for p in raw if p]
-                else:
-                    roots = [Path(stripped).resolve()]
-            except json.JSONDecodeError:
-                roots = [Path(stripped).resolve()]
-        else:
-            roots = [Path(stripped).resolve()]
-    else:
-        roots = [Path.cwd().resolve()]
+
+def _guard_unsafe(roots: list[Path], env_var: str) -> None:
     for root in roots:
         if str(root) in _UNSAFE_ROOTS:
             raise SystemExit(
                 f"resilient-read: refusing to use '{root}' as {env_var}. "
                 "Set the variable to your project directory."
             )
-    return roots or [Path.cwd().resolve()]
+
+
+def _resolve_roots(env_var: str) -> list[Path]:
+    """Return roots from env var, falling back to CWD."""
+    override = os.environ.get(env_var)
+    roots = _parse_root_list(override) if override else []
+    if not roots:
+        roots = [Path.cwd().resolve()]
+    _guard_unsafe(roots, env_var)
+    return roots
 
 
 def _resolve_root_single(env_var: str) -> Path:
-    """Return a single root from env var (first value if multi)."""
     return _resolve_roots(env_var)[0]
 
 
 def state_root() -> Path:
     """Return the directory where future resilient-read state will live.
 
-    Uses ``$RR_STATE_DIR`` if set, otherwise first ``$RR_WORKSPACE`` if set,
-    otherwise ``$PWD``.
+    Uses ``$RR_STATE_DIR`` if set, otherwise the current working directory.
+    State is intentionally decoupled from ``$RR_WORKSPACE``.
     """
     if os.environ.get("RR_STATE_DIR"):
         return _resolve_root_single("RR_STATE_DIR")
-    if os.environ.get("RR_WORKSPACE"):
-        return _resolve_root_single("RR_WORKSPACE")
     root = Path.cwd().resolve()
     if str(root) in _UNSAFE_ROOTS:
         raise SystemExit(
@@ -87,29 +91,74 @@ def state_root() -> Path:
 
 
 def workspace_roots() -> list[Path]:
-    """Return the default bases for relative read paths.
+    """Return workspace roots (the access boundary).
 
-    Uses ``$RR_WORKSPACE`` if set, otherwise ``$PWD``.
+    Parsed from ``$RR_WORKSPACE``; if unset, falls back to CWD. The current
+    working directory is always included — auto-added at the front if it
+    isn't already inside one of the configured roots.
     """
-    return _resolve_roots("RR_WORKSPACE")
+    override = os.environ.get("RR_WORKSPACE")
+    configured = _parse_root_list(override) if override else []
+    cwd = Path.cwd().resolve()
+
+    if not configured:
+        roots = [cwd]
+    else:
+        cwd_inside = any(_path_inside(cwd, ws) for ws in configured)
+        roots = configured if cwd_inside else [cwd, *configured]
+
+    _guard_unsafe(roots, "RR_WORKSPACE")
+    return roots
+
+
+def _path_inside(target: Path, root: Path) -> bool:
+    """Return True if ``target`` is equal to or nested under ``root``."""
+    try:
+        target.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _containing_workspace(workspaces: list[Path], target: Path) -> Path | None:
+    for ws in workspaces:
+        if _path_inside(target, ws):
+            return ws
+    return None
 
 
 def _resolve_path(workspaces: list[Path], rel_path: str) -> Path:
-    """Resolve a user-supplied path. Relative paths are tried against each
-    workspace in order (first match wins); absolute paths are accepted
-    as-is. The file must exist and be a regular file."""
+    """Resolve a user-supplied path with CWD anchoring + workspace boundary.
+
+    - Relative paths anchor at CWD first; if not found there, fall back to
+      each workspace root in order (first match wins).
+    - Absolute paths are accepted only if they fall inside some workspace root.
+    - The final target must exist and be a regular file.
+    """
     p = Path(rel_path)
     if p.is_absolute():
         full = p.resolve()
+        if _containing_workspace(workspaces, full) is None:
+            raise ResilientReadError(
+                "permission_denied", "outside_workspace",
+                "Absolute path is not inside any workspace root",
+                {"path": rel_path, "resolved": str(full),
+                 "workspaces": [str(ws) for ws in workspaces]},
+            )
     else:
+        cwd = Path.cwd().resolve()
+        cwd_candidate = (cwd / rel_path).resolve()
         full = None
-        for ws in workspaces:
-            candidate = (ws / rel_path).resolve()
-            if candidate.exists():
-                full = candidate
-                break
+        if _path_inside(cwd_candidate, cwd) and cwd_candidate.exists():
+            full = cwd_candidate
+        else:
+            for ws in workspaces:
+                candidate = (ws / rel_path).resolve()
+                if _path_inside(candidate, ws) and candidate.exists():
+                    full = candidate
+                    break
         if full is None:
-            full = (workspaces[0] / rel_path).resolve()
+            full = cwd_candidate
     if not full.exists():
         raise ResilientReadError("not_found", "missing", "File not found", {"path": rel_path})
     if not full.is_file():
