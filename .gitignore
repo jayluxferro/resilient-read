@@ -5,3 +5,11 @@ __pycache__/
 *.pyc
 tmp/
 git-push
+devbench/
+email-to-devbench.md
+bench/
+results/
+devbench/
+email-to-devbench.md
+results_*.json
+transcript_template.json
