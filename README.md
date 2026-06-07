@@ -171,6 +171,46 @@ currently stateless; `RR_STATE_DIR` exists for forward compatibility.
 
 Each response is small and composable, so you can process huge files while staying inside small model contexts.
 
+## Claude Code: the "File has not been read yet" gate
+
+Claude Code's built-in `Edit` and `Write` tools enforce a "file must be read
+first" precondition that is satisfied **only by the built-in `Read` tool** —
+MCP-served reads such as `rr.read_lines` don't register. An `Edit` immediately
+after an `rr.*` read therefore fails with `File has not been read yet`, and
+Claude has to retry. The precondition is checked *before* PreToolUse hooks
+fire, so a PreToolUse hook cannot bypass it.
+
+The workable bridge is a **PostToolUse hook** on `mcp__resilient-read__*` that
+injects a system-reminder telling Claude exactly which `Read(file_path=...)`
+call to issue if it intends to edit the same path. Costs one extra cheap Read
+per edit-bound file vs. a failed-Edit-then-Read retry round.
+
+A ready-to-use script ships with the repo:
+[`examples/claude-code-hooks/resilient_read_nudge.py`](examples/claude-code-hooks/resilient_read_nudge.py).
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__resilient-read__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /path/to/resilient-read/examples/claude-code-hooks/resilient_read_nudge.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+After every `rr.*` read, Claude sees a system-reminder with the exact
+`Read(file_path="<abs>")` to issue before any Edit/Write of that path.
+
 ## Project housekeeping
 
 - Release notes and version history: `CHANGELOG.md`
